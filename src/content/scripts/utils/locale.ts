@@ -16,6 +16,9 @@ function initLocale() {
       `${config.addonRef}-addon.ftl`,
       // Strings used inside the main window (menus, panes, …)
       `${config.addonRef}-mainWindow.ftl`,
+      // Strings used inside the preferences pane. The pane itself is localized
+      // through its own `<linkset>`; this is for widgets built from code.
+      `${config.addonRef}-preferences.ftl`,
     ],
     true,
   );

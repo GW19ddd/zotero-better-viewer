@@ -1,7 +1,7 @@
 {
   "name": "zotero-better-viewer",
   "type": "module",
-  "version": "3.0.5",
+  "version": "1.0.0",
   "packageManager": "pnpm@10.20.0",
   "description": "A Zotero plugin for a better item viewing experience",
   "config": {

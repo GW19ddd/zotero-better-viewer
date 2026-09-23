@@ -11,3 +11,7 @@ item-section-example2-button-tooltip =
 item-info-row-example-label = Example Row
 itemmenu-wrap-columns-label = Wrap Columns
 itemmenu-wrap-columns-empty-label = (No columns available)
+itemmenu-auto-fit-label = Auto Fit
+itemmenu-auto-fit-width-label = Fit Column Widths to Content
+itemmenu-auto-fit-font-label = Shrink Font to Fit Content
+itemmenu-auto-fit-font-reset-label = Reset Font Sizes

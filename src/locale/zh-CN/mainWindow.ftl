@@ -11,3 +11,7 @@ item-section-example2-button-tooltip =
 item-info-row-example-label = 示例行
 itemmenu-wrap-columns-label = 换行列
 itemmenu-wrap-columns-empty-label = (无可用的列)
+itemmenu-auto-fit-label = 自适应
+itemmenu-auto-fit-width-label = 列宽适应内容
+itemmenu-auto-fit-font-label = 字号适应内容
+itemmenu-auto-fit-font-reset-label = 重置字号

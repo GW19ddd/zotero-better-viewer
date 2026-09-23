@@ -19,3 +19,5 @@ zotero-plugin-template/
 
 # Local original screenshot (uncompressed large file, not committed)
 image.bmp
+# Raw screenshots (keep only compressed PNGs in the repo)
+*.bmp

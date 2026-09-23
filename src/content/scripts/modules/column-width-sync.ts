@@ -9,8 +9,9 @@
  *
  * Fix: wrap `tree._columns.onResize()` (the single place that writes column
  * widths) and, for every drag frame, rebuild the resize payload so that the
- * delta of the dragged column is absorbed *proportionally* by every resizable
- * visible column on its right. Total width stays constant.
+ * delta of the dragged column is absorbed *proportionally* by every other
+ * resizable visible column — both to its left and to its right. Total width
+ * stays constant, and dragging the right-most column works as well.
  *
  * Implementation notes (verified against Zotero 10.0.3 / omni.ja):
  * - `onResize` is an instance arrow property (not on the prototype), so it has
@@ -19,10 +20,13 @@
  *   `column.width` (which is stored without padding). Snapshots are therefore
  *   read from the header DOM with `getBoundingClientRect()`, exactly like
  *   Zotero itself does in `_handleResizerDragStop()`.
- * - The very first `onResize()` call of a drag contains *every* visible column
- *   (`_handleResizerDragStart`); every later frame only contains the two/three
- *   columns returned by `_getResizeColumns()`. That key count is used to tell
- *   "drag baseline" from "drag frame".
+ * - `tree.state.resizing` (React state, set to the resizer index by
+ *   `_handleResizerDragStart` and back to `null` by `_handleResizerDragStop`)
+ *   is the reliable "a drag is in progress" flag and is preferred over any
+ *   payload sniffing. The key count (`_handleResizerDragStart` sends every
+ *   visible column, `_handleResizerDrag` only the two returned by
+ *   `_getResizeColumns()`) is only used as a fallback when the React state
+ *   cannot be read.
  * - `tree._columns` is recreated whenever the column set changes (switching
  *   library / view type, custom column changes), which would silently drop the
  *   patch. An accessor property is installed on the tree instance so every
@@ -58,6 +62,11 @@ interface VirtualizedTableLike {
   props?: { id?: string };
   _getVisibleColumns?: () => ItemTreeColumn[];
   rerender?: () => void;
+  /**
+   * React component state. `resizing` holds the index of the column resizer
+   * being dragged (`null` when idle) — the preferred drag indicator.
+   */
+  state?: { resizing?: number | null; [key: string]: unknown };
   // Present in some versions; used opportunistically to flush column prefs.
   _writeColumnPrefsToFile?: (force?: boolean) => void;
 }
@@ -77,6 +86,8 @@ interface WindowState {
   /** Rendered width (px) of every visible column when the drag started */
   snapshot: Map<string, number>;
   applying: boolean;
+  /** `true` while `tree.state.resizing` reports an ongoing drag */
+  dragging: boolean;
   retryTimer?: number;
   retries: number;
 }
@@ -147,6 +158,7 @@ function tryRegister(win: Window, retriesDone: number): boolean {
     tree,
     snapshot: new Map(),
     applying: false,
+    dragging: false,
     retries: retriesDone,
     wrapper: () => {
       /* replaced right below */
@@ -187,6 +199,7 @@ function scheduleRetry(win: Window, retriesDone: number): boolean {
       tree: {} as VirtualizedTableLike,
       snapshot: new Map(),
       applying: false,
+      dragging: false,
       retries: retriesDone + 1,
       retryTimer: timer,
       wrapper: () => {
@@ -273,21 +286,44 @@ function handleOnResize(
     return;
   }
 
-  // A payload covering every visible column is either the pre-drag baseline
-  // (`_handleResizerDragStart`) or a programmatic full refresh (reorder /
-  // hide / restore). Refresh the baseline and let it through untouched.
-  if (keys.length >= visible.length) {
+  // Is the user currently dragging a resizer? `tree.state.resizing` is the
+  // authoritative answer; the key count is only a fallback for builds where
+  // the React state cannot be read.
+  const resizing = isResizing(tree);
+  const fullPayload = keys.length >= visible.length;
+  const dragFrame =
+    resizing === undefined ? !fullPayload : resizing && !fullPayload;
+
+  if (!dragFrame) {
+    // Either the pre-drag baseline (`_handleResizerDragStart` sends every
+    // visible column) or a programmatic full refresh (reorder / hide /
+    // restore). Refresh the baseline and let the payload through untouched.
+    if (resizing === false) {
+      state.dragging = false;
+    }
     state.snapshot = readWidthsFromDOM(state.win, tree);
     callOriginal(state, widths, storePrefs);
     return;
   }
 
-  // Drag frame: only the dragged column and its neighbour are present.
-  if (!state.snapshot.size) {
+  // Drag frame: only the dragged column and one neighbour are present.
+  if ((resizing === true && !state.dragging) || !state.snapshot.size) {
+    // First frame of a new drag (or a drag whose start we never saw) — take
+    // the baseline now so the delta below is measured against it.
+    state.dragging = true;
     state.snapshot = readWidthsFromDOM(state.win, tree);
   }
-  const redistributed = redistribute(state.snapshot, widths, visible);
+
+  let redistributed: Record<string, number> | undefined;
+  try {
+    redistributed = redistribute(state.snapshot, widths, visible);
+  } catch (e) {
+    log("redistribute failed", e);
+    redistributed = undefined;
+  }
   if (!redistributed) {
+    // No column can give way (e.g. only two columns and the other one is
+    // fixed width) — degrade to Zotero's own two-column behaviour.
     callOriginal(state, widths, storePrefs);
     return;
   }
@@ -311,6 +347,20 @@ function handleOnResize(
       log("flush prefs failed", e);
     }
   }
+}
+
+/**
+ * `true` while a column resizer is being dragged, `false` while it is not and
+ * `undefined` when the React state is unavailable (fall back to the key count
+ * heuristic in that case).
+ */
+function isResizing(tree: VirtualizedTableLike): boolean | undefined {
+  const state = tree.state;
+  if (!state || typeof state !== "object" || !("resizing" in state)) {
+    return undefined;
+  }
+  const value = state.resizing;
+  return value !== null && value !== undefined;
 }
 
 function callOriginal(
@@ -436,8 +486,9 @@ function columnMinWidth(column: ItemTreeColumn): number {
 }
 
 /**
- * Spread `target - snapshot[dragged]` over every resizable visible column to
- * the right, proportionally to their baseline width, clamping each one at its
+ * Spread `target - snapshot[dragged]` over *every* other resizable visible
+ * column — the ones to the right **and** the ones to the left of the dragged
+ * column — proportionally to their baseline width, clamping each one at its
  * minimum. Leftover that no column can absorb shrinks the target instead, so
  * the total width is always preserved.
  */
@@ -454,18 +505,28 @@ function redistribute(
 
   const requested = widths[dragged];
   let target = typeof requested === "number" ? requested : base;
-  const delta = target - base;
-  if (!Number.isFinite(delta) || Math.abs(delta) < 0.5) return undefined;
 
   const draggedIndex = visible.findIndex((c) => c.dataKey === dragged);
   if (draggedIndex < 0) return undefined;
+  const draggedColumn = visible[draggedIndex] as ItemTreeColumn;
+  const draggedMin = columnMinWidth(draggedColumn);
 
+  // Never let the dragged column shrink below its own minimum — the surplus
+  // simply stays unallocated rather than producing a negative width.
+  const minTarget = Math.min(base, draggedMin);
+  if (!(target > minTarget)) target = minTarget;
+
+  const delta = target - base;
+  if (!Number.isFinite(delta) || Math.abs(delta) < 0.5) return undefined;
+
+  // Only columns strictly to the RIGHT of the dragged one give way. Every
+  // column on the left (including the immediate left neighbour) keeps its
+  // width untouched — this holds for dragging right *and* dragging left.
   const givers: WidthGiver[] = [];
   for (let i = draggedIndex + 1; i < visible.length; i++) {
     const column = visible[i];
-    if (!column || column.hidden || column.fixedWidth || column.staticWidth) {
-      continue;
-    }
+    if (!column) continue;
+    if (column.hidden || column.fixedWidth || column.staticWidth) continue;
     const baseline = snapshot.get(column.dataKey);
     givers.push({
       key: column.dataKey,
@@ -476,6 +537,7 @@ function redistribute(
       min: columnMinWidth(column),
     });
   }
+  // Nothing can give way: let Zotero handle the frame on its own.
   if (!givers.length) return undefined;
 
   const next = new Map<string, number>(givers.map((g) => [g.key, g.width]));

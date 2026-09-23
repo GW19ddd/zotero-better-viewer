@@ -8,6 +8,10 @@ declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
       "wrapColumns": string;
+      "wrapRows": string;
+      "fontSizes": string;
+      "autoFitWidthOnLoad": boolean;
+      "autoFitFontOnLoad": boolean;
     };
   }
 }

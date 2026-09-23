@@ -1,14 +1,27 @@
 import {
+  registerAutoFit,
+  registerAutoFitPrefObservers,
+  runAutoFitOnLoad,
+  unregisterAutoFit,
+  unregisterAutoFitPrefObservers,
+} from "./modules/auto-fit";
+import {
   registerColumnWidthSync,
   unregisterColumnWidthSync,
 } from "./modules/column-width-sync";
+import {
+  buildPreferencePane,
+  registerPreferencePanel,
+} from "./modules/preference";
 import {
   registerStyleSheet,
   unregisterStyleSheet,
 } from "./modules/style-sheet";
 import {
   registerWrapColumns,
+  registerWrapPrefObservers,
   unregisterWrapColumns,
+  unregisterWrapPrefObservers,
 } from "./modules/wrap-columns";
 import { initLocale } from "./utils/locale";
 import { createZToolkit } from "./utils/ztoolkit";
@@ -22,7 +35,21 @@ async function onStartup() {
 
   initLocale();
 
-  // registerPreferencePanel();
+  try {
+    await registerPreferencePanel();
+  } catch (e) {
+    ztoolkit.log("registerPreferencePanel failed", e);
+  }
+
+  // Keep every window's wrapping CSS in sync with the prefs, whoever changes
+  // them (preferences pane, another window, about:config).
+  registerWrapPrefObservers();
+
+  try {
+    registerAutoFitPrefObservers();
+  } catch (e) {
+    ztoolkit.log("registerAutoFitPrefObservers failed", e);
+  }
 
   await Promise.all(
     Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
@@ -48,6 +75,19 @@ async function onMainWindowLoad(win: Window): Promise<void> {
   } catch (e) {
     ztoolkit.log("registerWrapColumns failed", e);
   }
+
+  // "Auto fit" (fit column widths / shrink fonts) menu + CSS
+  try {
+    registerAutoFit(win);
+  } catch (e) {
+    ztoolkit.log("registerAutoFit failed", e);
+  }
+
+  try {
+    runAutoFitOnLoad(win);
+  } catch (e) {
+    ztoolkit.log("runAutoFitOnLoad failed", e);
+  }
 }
 
 function onMainWindowUnload(win: Window): void {
@@ -65,9 +105,23 @@ function onMainWindowUnload(win: Window): void {
   } catch (e) {
     ztoolkit.log("unregisterWrapColumns failed", e);
   }
+
+  try {
+    unregisterAutoFit(win);
+  } catch (e) {
+    ztoolkit.log("unregisterAutoFit failed", e);
+  }
 }
 
 async function onShutdown() {
+  unregisterWrapPrefObservers();
+
+  try {
+    unregisterAutoFitPrefObservers();
+  } catch (e) {
+    ztoolkit.log("unregisterAutoFitPrefObservers failed", e);
+  }
+
   await Promise.all(
     Zotero.getMainWindows().map((win) => onMainWindowUnload(win)),
   );
@@ -82,9 +136,24 @@ async function onShutdown() {
 // Keep in mind hooks only do dispatch. Don't add code that does real jobs in hooks.
 // Otherwise the code would be hard to read and maintain.
 
+/**
+ * Dispatched by `preferences.xhtml` (`onload` / `onunload`). The pane is loaded
+ * as a fragment inside Zotero's preferences window, so everything about its
+ * content lives here, in the addon bundle.
+ */
+function onPrefsEvent(
+  type: "load" | "unload",
+  data: { window: Window; [key: string]: unknown },
+): void {
+  if (type === "load") {
+    buildPreferencePane(data.window);
+  }
+}
+
 export default {
   onStartup,
   onShutdown,
   onMainWindowLoad,
   onMainWindowUnload,
+  onPrefsEvent,
 };

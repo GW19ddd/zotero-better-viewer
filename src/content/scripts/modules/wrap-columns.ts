@@ -1,10 +1,11 @@
 /**
- * Per-column text wrapping for the item tree.
+ * Per-column / per-row-type text wrapping for the item tree.
  *
  * Zotero clips every cell to a single line (`white-space: nowrap` +
- * `text-overflow: ellipsis`). This module lets the user pick — from the item
- * context menu — which columns should wrap instead; every other column keeps
- * the native one-line ellipsis behaviour.
+ * `text-overflow: ellipsis`). This module lets the user pick — from the
+ * preferences pane or the item context menu — which columns should wrap, and
+ * which *kinds* of rows should be affected; everything else keeps the native
+ * one-line ellipsis behaviour.
  *
  * Implementation notes (verified against Zotero 10.0.3 / omni.ja):
  * - Every rendered cell carries its dataKey as a class
@@ -15,8 +16,16 @@
  * - The ellipsis lives on two levels: the outer `.cell` and, for the primary
  *   column, the inner `.cell-text`. Both have to be reset or the title stays
  *   clipped.
- * - The selection is stored as a comma separated list of dataKeys in the
- *   `wrapColumns` pref; the CSS is regenerated on every change so it applies
+ * - Rows carry no type class (only the toggles `annotation-row`,
+ *   `library-header-row` and `spacer-row`), but the first cell of every row
+ *   holds the type icon with a `data-item-type` attribute
+ *   (`<span class="icon icon-css cell-icon item-icon" data-item-type="note">`),
+ *   which is enough for a `:has()` based selector. `regular` items can only be
+ *   described negatively (everything that is neither a note nor an
+ *   attachment).
+ * - Column selection is stored as a comma separated list of dataKeys in the
+ *   `wrapColumns` pref; row selection as a comma separated list of row types
+ *   in `wrapRows`. The CSS is regenerated on every change so it applies
  *   instantly.
  */
 
@@ -32,6 +41,37 @@ const MENU_ID = `${config.addonRef}-itemmenu-wrap-columns`;
 const MENU_POPUP_ID = `${config.addonRef}-itemmenu-wrap-columns-popup`;
 
 /**
+ * Row kinds the user can enable wrapping for. Item ("regular") rows can only
+ * be matched negatively — everything that has a type icon which is neither a
+ * note nor an attachment.
+ */
+export type WrapRowType = "regular" | "note" | "attachment" | "annotation";
+
+/** Stable UI order — also used when building the preferences pane. */
+export const WRAP_ROW_TYPES: readonly WrapRowType[] = [
+  "regular",
+  "note",
+  "attachment",
+  "annotation",
+];
+
+const PREFS_PREFIX = config.prefsPrefix;
+
+/** Rows that must never wrap, regardless of the row type selection. */
+const ROW_EXCLUSIONS = ":not(.library-header-row):not(.spacer-row)";
+
+/** First column of a row holds `<span class="cell-icon" data-item-type>`. */
+const FIRST_COLUMN_ICON = "> .cell.first-column > .cell-icon";
+
+const ROW_MATCHERS: Record<WrapRowType, string> = {
+  regular: `${ROW_EXCLUSIONS}:has(${FIRST_COLUMN_ICON}[data-item-type]:not([data-item-type="note"]):not([data-item-type^="attachment"]))`,
+  note: `${ROW_EXCLUSIONS}:has(${FIRST_COLUMN_ICON}[data-item-type="note"])`,
+  attachment: `${ROW_EXCLUSIONS}:has(${FIRST_COLUMN_ICON}[data-item-type^="attachment"])`,
+  // Annotation rows are identified by a class on the row itself.
+  annotation: `.annotation-row${ROW_EXCLUSIONS}`,
+};
+
+/**
  * Two levels are targeted on purpose: `.cell` (outer) and `.cell-text`
  * (inner — only the primary column has one, but the rule is harmless
  * elsewhere).
@@ -44,7 +84,7 @@ const WRAP_DECLARATIONS = [
   "overflow-wrap: break-word !important",
 ];
 
-interface ItemTreeColumn {
+export interface ItemTreeColumn {
   dataKey: string;
   label?: string;
   ordinal?: number;
@@ -57,6 +97,9 @@ interface VirtualizedTableLike {
 
 /** Windows the feature is currently registered for. */
 const windows = new Set<Window>();
+
+/** Handles returned by `Zotero.Prefs.registerObserver`. */
+let prefObservers: symbol[] = [];
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -79,25 +122,67 @@ export function unregisterWrapColumns(win: Window): void {
   unregisterDynamicStyleSheet(win);
 }
 
+/**
+ * Watch the wrapping prefs so edits made from anywhere (preferences pane,
+ * another window, about:config) repaint every open item tree immediately.
+ * Called once per plugin lifetime.
+ */
+export function registerWrapPrefObservers(): void {
+  if (prefObservers.length) return;
+  for (const key of ["wrapColumns", "wrapRows"]) {
+    try {
+      prefObservers.push(
+        Zotero.Prefs.registerObserver(
+          `${PREFS_PREFIX}.${key}`,
+          () => applyWrapCSSToAllWindows(),
+          true,
+        ),
+      );
+    } catch (e) {
+      log("failed to observe pref", key, e);
+    }
+  }
+}
+
+export function unregisterWrapPrefObservers(): void {
+  for (const handle of prefObservers) {
+    try {
+      Zotero.Prefs.unregisterObserver(handle);
+    } catch (e) {
+      log("failed to unregister pref observer", e);
+    }
+  }
+  prefObservers = [];
+}
+
+/** Rebuild and re-apply the wrapping stylesheet in every known window. */
+export function applyWrapCSSToAllWindows(): void {
+  for (const win of windows) {
+    applyWrapCSS(win);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Preferences
 // ---------------------------------------------------------------------------
 
-function getWrapKeys(): string[] {
-  const raw = getPref("wrapColumns");
-  if (typeof raw !== "string") return [];
-  return Array.from(
-    new Set(
-      raw
-        .split(",")
-        .map((key) => key.trim())
-        .filter(Boolean),
-    ),
-  );
+export function getWrapKeys(): string[] {
+  return parseList(getPref("wrapColumns"));
 }
 
-function saveWrapKeys(keys: string[]): void {
-  setPref("wrapColumns", Array.from(new Set(keys)).join(","));
+export function saveWrapKeys(keys: string[]): void {
+  setPref("wrapColumns", joinList(keys));
+  applyWrapCSSToAllWindows();
+}
+
+/** Selected row types, defaulting to regular items only. */
+export function getWrapRowTypes(): WrapRowType[] {
+  return parseList(getPref("wrapRows")).filter(isWrapRowType);
+}
+
+export function saveWrapRowTypes(types: string[]): void {
+  setPref("wrapRows", joinList(types.filter(isWrapRowType)));
+  applyWrapCSSToAllWindows();
 }
 
 function toggleKey(dataKey: string): void {
@@ -108,9 +193,26 @@ function toggleKey(dataKey: string): void {
     keys.add(dataKey);
   }
   saveWrapKeys(Array.from(keys));
-  for (const win of windows) {
-    applyWrapCSS(win);
-  }
+}
+
+function parseList(raw: unknown): string[] {
+  if (typeof raw !== "string") return [];
+  return Array.from(
+    new Set(
+      raw
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function joinList(values: string[]): string {
+  return Array.from(new Set(values)).join(",");
+}
+
+function isWrapRowType(value: string): value is WrapRowType {
+  return (WRAP_ROW_TYPES as readonly string[]).includes(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -118,23 +220,39 @@ function toggleKey(dataKey: string): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Wrapping rules for `dataKeys`. An empty list yields an empty stylesheet,
- * i.e. Zotero's default single-line ellipsis for every column.
+ * Wrapping rules for the given `dataKeys`, limited to the rows matching
+ * `rowTypes`. An empty list on either side yields an empty stylesheet, i.e.
+ * Zotero's default single-line ellipsis everywhere.
+ *
+ * One rule block is emitted per row type so that a selector the browser cannot
+ * parse (e.g. `:has()` on an old Gecko) only disables that row type instead of
+ * the whole stylesheet.
  */
-export function buildWrapCSS(dataKeys: string[]): string {
-  const selectors: string[] = [];
+export function buildWrapCSS(
+  dataKeys: string[],
+  rowTypes: WrapRowType[] | string[],
+): string {
+  if (!dataKeys.length) return "";
+
+  // Scoped to the item tree so other virtualized tables are untouched.
+  const cells: string[] = [];
   for (const dataKey of dataKeys) {
     const escaped = escapeCSSKey(dataKey);
-    // Scoped to the item tree so other virtualized tables are untouched.
-    selectors.push(`#zotero-items-tree .virtualized-table .cell.${escaped}`);
-    selectors.push(
-      `#zotero-items-tree .virtualized-table .cell.${escaped} .cell-text`,
+    cells.push(` .cell.${escaped}`);
+    cells.push(` .cell.${escaped} .cell-text`);
+  }
+
+  const rules: string[] = [];
+  for (const rowType of rowTypes) {
+    const matcher = ROW_MATCHERS[rowType as WrapRowType];
+    if (!matcher) continue;
+    const row = `#zotero-items-tree .virtualized-table .row${matcher}`;
+    const selectors = cells.map((cell) => `${row}${cell}`);
+    rules.push(
+      `${selectors.join(",\n")} {\n  ${WRAP_DECLARATIONS.join(";\n  ")};\n}\n`,
     );
   }
-  if (!selectors.length) return "";
-  return `${selectors.join(",\n")} {\n  ${WRAP_DECLARATIONS.join(
-    ";\n  ",
-  )};\n}\n`;
+  return rules.join("");
 }
 
 function escapeCSSKey(dataKey: string): string {
@@ -146,7 +264,7 @@ function escapeCSSKey(dataKey: string): string {
 }
 
 function applyWrapCSS(win: Window): void {
-  updateDynamicStyleSheet(win, buildWrapCSS(getWrapKeys()));
+  updateDynamicStyleSheet(win, buildWrapCSS(getWrapKeys(), getWrapRowTypes()));
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +367,7 @@ function createMenuItem(
 // Columns
 // ---------------------------------------------------------------------------
 
-function getVisibleColumns(win: Window): ItemTreeColumn[] {
+export function getVisibleColumns(win: Window): ItemTreeColumn[] {
   const tree = getTree(win);
   let columns: ItemTreeColumn[] | undefined;
   try {
@@ -266,7 +384,19 @@ function getVisibleColumns(win: Window): ItemTreeColumn[] {
     .sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0));
 }
 
-function getTree(win: Window): VirtualizedTableLike | undefined {
+export function getTree(win: Window): VirtualizedTableLike | undefined {
+  const itemTree = getTreeFromSource(win);
+  if (itemTree) return itemTree;
+  // Fall back to any other main window (e.g. when called from the
+  // preferences window, where `win.ZoteroPane` does not exist).
+  for (const other of Zotero.getMainWindows()) {
+    const tree = getTreeFromSource(other);
+    if (tree) return tree;
+  }
+  return undefined;
+}
+
+function getTreeFromSource(win: Window): VirtualizedTableLike | undefined {
   const pane = (
     win as unknown as { ZoteroPane?: { itemsView?: { tree?: unknown } } }
   ).ZoteroPane;
@@ -281,7 +411,7 @@ function getTree(win: Window): VirtualizedTableLike | undefined {
  * columns) or a Fluent/string key — try `Zotero.getString` for the latter and
  * fall back to whatever is there.
  */
-function columnLabel(column: ItemTreeColumn): string {
+export function columnLabel(column: ItemTreeColumn): string {
   const raw = column.label;
   if (typeof raw !== "string" || !raw.trim()) return column.dataKey;
   if (!/^[A-Za-z0-9_.-]+$/.test(raw) || !raw.includes(".")) return raw;
