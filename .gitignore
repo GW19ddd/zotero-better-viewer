@@ -16,3 +16,6 @@ logs
 
 # Local reference copy of the community template
 zotero-plugin-template/
+
+# Local original screenshot (uncompressed large file, not committed)
+image.bmp

@@ -4,7 +4,7 @@
 [![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
 
 Better Viewer 是一个 Zotero 插件，令文库条目列表换行以便阅读全部标题。
-![](image.bmp)
+![](image.png)
 
 ## 致谢 / Attribution
 
