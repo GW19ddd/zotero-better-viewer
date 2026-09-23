@@ -3,23 +3,23 @@
   "type": "module",
   "version": "3.0.4",
   "packageManager": "pnpm@10.20.0",
-  "description": "Expand the item tree for Zotero",
+  "description": "A Zotero plugin for a better item viewing experience",
   "config": {
-    "addonName": "Expand Item Tree",
-    "addonID": "itemtree-expand@northword.cn",
-    "addonRef": "itemtree-expand",
-    "addonInstance": "ItemTreeExpand",
-    "prefsPrefix": "extensions.itemtreeexpand"
+    "addonName": "Better Viewer",
+    "addonID": "better-viewer@GW19ddd",
+    "addonRef": "better-viewer",
+    "addonInstance": "BetterViewer",
+    "prefsPrefix": "extensions.betterviewer"
   },
-  "author": "northword",
+  "author": "GW19ddd",
   "license": "AGPL-3.0-or-later",
-  "homepage": "https://github.com/northword/zotero-itemtree-expand#readme",
+  "homepage": "https://github.com/GW19ddd/zotero-better-viewer#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/northword/zotero-itemtree-expand.git"
+    "url": "git+https://github.com/GW19ddd/zotero-better-viewer.git"
   },
   "bugs": {
-    "url": "https://github.com/northword/zotero-itemtree-expand/issues"
+    "url": "https://github.com/GW19ddd/zotero-better-viewer/issues"
   },
   "scripts": {
     "start": "zotero-plugin serve",

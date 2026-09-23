@@ -1,10 +1,10 @@
 startup-begin = 插件加载中
 startup-finish = 插件已就绪
-menuitem-label = 插件模板: 帮助工具样例
-menupopup-label = 插件模板: 弹出菜单
-menuitem-submenulabel = 插件模板：子菜单
-menuitem-filemenulabel = 插件模板: 文件菜单
-prefs-title = 插件模板
+menuitem-label = Better Viewer: 帮助工具样例
+menupopup-label = Better Viewer: 弹出菜单
+menuitem-submenulabel = Better Viewer：子菜单
+menuitem-filemenulabel = Better Viewer: 文件菜单
+prefs-title = Better Viewer
 prefs-table-title = 标题
 prefs-table-detail = 详情
 tabpanel-lib-tab-label = 库标签

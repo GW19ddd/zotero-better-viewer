@@ -10,3 +10,9 @@ yarn.lock
 .scaffold
 build
 logs
+
+# Build artifacts
+*.xpi
+
+# Local reference copy of the community template
+zotero-plugin-template/
