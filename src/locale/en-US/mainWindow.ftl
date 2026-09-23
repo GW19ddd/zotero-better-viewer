@@ -9,3 +9,5 @@ item-section-example2-sidenav-tooltip =
 item-section-example2-button-tooltip =
     .tooltiptext = Unregister this section
 item-info-row-example-label = Example Row
+itemmenu-wrap-columns-label = Wrap Columns
+itemmenu-wrap-columns-empty-label = (No columns available)

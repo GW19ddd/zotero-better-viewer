@@ -9,3 +9,5 @@ item-section-example2-sidenav-tooltip =
 item-section-example2-button-tooltip =
     .tooltiptext = 移除此面板
 item-info-row-example-label = 示例行
+itemmenu-wrap-columns-label = 换行列
+itemmenu-wrap-columns-empty-label = (无可用的列)

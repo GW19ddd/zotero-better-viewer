@@ -1,0 +1,1 @@
+pref("wrapColumns", "title");

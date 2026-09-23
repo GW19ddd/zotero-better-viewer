@@ -1,7 +1,15 @@
 import {
+  registerColumnWidthSync,
+  unregisterColumnWidthSync,
+} from "./modules/column-width-sync";
+import {
   registerStyleSheet,
   unregisterStyleSheet,
 } from "./modules/style-sheet";
+import {
+  registerWrapColumns,
+  unregisterWrapColumns,
+} from "./modules/wrap-columns";
 import { initLocale } from "./utils/locale";
 import { createZToolkit } from "./utils/ztoolkit";
 
@@ -26,11 +34,37 @@ async function onMainWindowLoad(win: Window): Promise<void> {
   addon.data.ztoolkit = createZToolkit();
 
   registerStyleSheet(win);
+
+  // Column width sync patches internal Zotero APIs — never let it break loading
+  try {
+    registerColumnWidthSync(win);
+  } catch (e) {
+    ztoolkit.log("registerColumnWidthSync failed", e);
+  }
+
+  // Per-column wrapping (dynamic CSS + item context menu)
+  try {
+    registerWrapColumns(win);
+  } catch (e) {
+    ztoolkit.log("registerWrapColumns failed", e);
+  }
 }
 
 function onMainWindowUnload(win: Window): void {
   ztoolkit.unregisterAll();
   unregisterStyleSheet(win);
+
+  try {
+    unregisterColumnWidthSync(win);
+  } catch (e) {
+    ztoolkit.log("unregisterColumnWidthSync failed", e);
+  }
+
+  try {
+    unregisterWrapColumns(win);
+  } catch (e) {
+    ztoolkit.log("unregisterWrapColumns failed", e);
+  }
 }
 
 async function onShutdown() {

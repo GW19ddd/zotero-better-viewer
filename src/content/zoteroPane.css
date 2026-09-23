@@ -4,13 +4,7 @@
     position: relative !important;
     top: unset !important;
     padding: 5px 0;
-  }
-
-  .virtualized-table .cell {
-    white-space: unset !important;
-  }
-
-  .virtualized-table-body .cell {
-    text-overflow: unset !important;
+    /* Wrapped cells are taller than the rest — keep them top aligned. */
+    align-items: flex-start;
   }
 }

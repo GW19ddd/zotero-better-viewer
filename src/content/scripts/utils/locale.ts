@@ -11,7 +11,14 @@ function initLocale() {
     typeof Localization === "undefined"
       ? ztoolkit.getGlobal("Localization")
       : Localization
-  )([`${config.addonRef}-addon.ftl`], true);
+  )(
+    [
+      `${config.addonRef}-addon.ftl`,
+      // Strings used inside the main window (menus, panes, …)
+      `${config.addonRef}-mainWindow.ftl`,
+    ],
+    true,
+  );
   addon.data.locale = {
     current: l10n,
   };
